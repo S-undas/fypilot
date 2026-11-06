@@ -17,8 +17,8 @@ def test_thresholds_start_unset():
 
 def test_providers_registered_without_keys():
     s = Settings()
-    assert s.llm_provider in PROVIDERS
-    assert s.llm_fallback_provider in PROVIDERS
+    for provider, _ in [*s.llm_chain, s.judge_model]:
+        assert provider in PROVIDERS
     for p in PROVIDERS.values():
         assert p.api_key_env.endswith("_API_KEY")
         assert not hasattr(p, "api_key")
