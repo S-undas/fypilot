@@ -47,6 +47,8 @@ class Settings(BaseModel):
     chunk_min_chars: int = 40
 
     top_k: int = 5
+    retrieval_mode: str = "hybrid"
+    rrf_k: int = 60
 
     # None until tuned on a dev split
     score_threshold: float | None = None
