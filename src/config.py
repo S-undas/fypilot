@@ -42,6 +42,10 @@ class Settings(BaseModel):
     llm_fallback_provider: str = "groq"
     llm_temperature: float = 0.0
 
+    chunk_max_chars: int = 1500
+    chunk_overlap_chars: int = 150
+    chunk_min_chars: int = 40
+
     top_k: int = 5
 
     # None until tuned on a dev split
