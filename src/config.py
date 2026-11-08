@@ -42,7 +42,7 @@ class Settings(BaseModel):
 
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     nli_model: str = "cross-encoder/nli-deberta-v3-base"
-    reranker_model: str | None = None
+    reranker_model: str | None = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
     llm_chain: list[tuple[str, str]] = [("cerebras", "qwen-3.8-27b"), ("groq", "qwen/qwen3.8-27b")]
     judge_model: tuple[str, str] = ("gemini", "gemini-3.5-flash-lite")
@@ -58,6 +58,7 @@ class Settings(BaseModel):
     top_k: int = 5
     retrieval_mode: str = "hybrid"
     rrf_k: int = 60
+    rerank_pool: int = 20
 
     # None until tuned on a dev split
     score_threshold: float | None = None
