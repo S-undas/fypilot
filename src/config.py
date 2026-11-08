@@ -7,6 +7,8 @@ from dotenv import load_dotenv
 from pydantic import BaseModel
 
 ROOT = Path(__file__).resolve().parent.parent
+os.environ.setdefault("HF_HOME", str(ROOT / ".hf_cache"))
+os.environ.setdefault("MPLCONFIGDIR", str(ROOT / ".mpl_cache"))
 
 
 class LLMProvider(BaseModel):

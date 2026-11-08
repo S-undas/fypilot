@@ -13,3 +13,7 @@ eval/*.csv
 eval/*.jsonl
 eval/results/*.jsonl
 eval/results/*.csv
+.hf_cache/
+.uv_cache/
+.mpl_cache/
+.pytest_tmp/
