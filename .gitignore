@@ -11,6 +11,5 @@ CLAUDE.md
 WORK_PLAN.md
 eval/*.csv
 eval/*.jsonl
-docs/PHASES.md
 eval/results/*.jsonl
 eval/results/*.csv
