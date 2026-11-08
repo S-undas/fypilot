@@ -18,7 +18,7 @@ def parse_chain(spec: str) -> list[tuple[str, str]]:
     return [tuple(part.split(":", 1)) for part in spec.split(",")]
 
 
-def run(name: str, chain, splits: list[str], mode: str, k: int, limit: int | None, prompt: str = "grounded", rerank: bool = False) -> list[dict]:
+def run(name: str, chain, splits: list[str], mode: str, k: int, limit: int | None, prompt: str = "grounded", rerank: bool = False, refusal: bool = False) -> list[dict]:
     from src.retrieval.embedder import Embedder
     from src.retrieval.index import Index
 
@@ -38,7 +38,7 @@ def run(name: str, chain, splits: list[str], mode: str, k: int, limit: int | Non
     records = []
     for n, it in enumerate(items, 1):
         t0 = time.time()
-        ans = answer(it.question, index, gen, [it.doc], k, mode, prompt=prompt, reranker=reranker)
+        ans = answer(it.question, index, gen, [it.doc], k, mode, allow_refusal=refusal, prompt=prompt, reranker=reranker)
         latency = time.time() - t0
         gold = gold_chunk_ids(it, index.chunks) if it.answerable else set()
         cited = [(c.n, ans.hits[c.n - 1].chunk.text) for c in ans.citations]
@@ -50,6 +50,9 @@ def run(name: str, chain, splits: list[str], mode: str, k: int, limit: int | Non
                 "answer": ans.text, "served_by": "/".join(gen.last_ref or ()), "latency_s": round(latency, 2),
                 "n_valid_citations": len(ans.citations), "invalid_refs": ans.invalid_refs,
                 "retrieved": [h.chunk.chunk_id for h in ans.hits], "top_dense": round(ans.hits[0].dense, 4) if ans.hits else None,
+                "max_dense": round(max(h.dense for h in ans.hits), 4) if ans.hits else None,
+                "top_score": round(ans.hits[0].score, 4) if ans.hits else None,
+                "cited_chunks": [c.chunk_id for c in ans.citations],
                 "gold_in_top5": any(h.chunk.chunk_id in gold for h in ans.hits), **verdict,
             }
         )
@@ -84,8 +87,9 @@ def main() -> None:
     ap.add_argument("--limit", type=int)
     ap.add_argument("--prompt", default="grounded", choices=["grounded", "bare"])
     ap.add_argument("--rerank", action="store_true")
+    ap.add_argument("--refusal", action="store_true", help="add an explicit refusal instruction to the prompt")
     args = ap.parse_args()
-    records = run(args.name, parse_chain(args.chain), args.splits.split(","), args.mode, args.k, args.limit, args.prompt, args.rerank)
+    records = run(args.name, parse_chain(args.chain), args.splits.split(","), args.mode, args.k, args.limit, args.prompt, args.rerank, args.refusal)
     print_summary(args.name, records)
 
 
