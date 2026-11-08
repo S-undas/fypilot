@@ -17,3 +17,4 @@ eval/results/*.csv
 .uv_cache/
 .mpl_cache/
 .pytest_tmp/
+eval/results/nli*.json
