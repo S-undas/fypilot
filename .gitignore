@@ -9,3 +9,6 @@ index/
 CLAUDE.md
 .claude/
 WORK_PLAN.md
+eval/*.csv
+eval/*.jsonl
+docs/PHASES.md
