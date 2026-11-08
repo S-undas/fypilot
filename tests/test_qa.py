@@ -124,3 +124,10 @@ def test_refusal_instruction_only_when_enabled(index):
     plain = build_messages("q", hits)[0]["content"]
     refuse = build_messages("q", hits, allow_refusal=True)[0]["content"]
     assert plain == SYSTEM and "cannot find" in refuse
+
+
+def test_bare_prompt_has_no_grounding_or_refusal_instruction(index):
+    hits = index.search("budget", k=1, mode="bm25")
+    bare = build_messages("q", hits, prompt="bare")[0]["content"]
+    assert "outside knowledge" not in bare and "cannot find" not in bare and "[2]" in bare
+    assert "outside knowledge" in build_messages("q", hits)[0]["content"]

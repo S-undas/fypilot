@@ -8,6 +8,7 @@ from src.qa.answer import answer
 from src.qa.llm import LLM
 from src.retrieval.embedder import Embedder
 from src.retrieval.index import Index
+from src.retrieval.rerank import Reranker
 
 
 def main() -> None:
@@ -21,7 +22,8 @@ def main() -> None:
     args = ap.parse_args()
 
     index = Index.load(settings.index_dir, Embedder())
-    ans = answer(args.question, index, LLM(), args.doc, args.k, args.mode, args.allow_refusal)
+    reranker = Reranker() if settings.reranker_model else None
+    ans = answer(args.question, index, LLM(), args.doc, args.k, args.mode, args.allow_refusal, reranker=reranker)
     print(ans.text, "\n")
     for c in ans.citations:
         print(c)

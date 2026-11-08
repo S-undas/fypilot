@@ -3,14 +3,21 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from src.config import settings
 from src.qa.llm import LLM
 from src.retrieval.index import Hit, Index
+from src.retrieval.rerank import Reranker, retrieve
 
 SYSTEM = (
     "You answer questions about final year project documents using only the numbered context passages. "
     "Cite the passages you use with their numbers in plain square brackets, for example [2] or [1][3]. "
     "Use no other citation format. "
     "Do not use outside knowledge."
+)
+BARE = (
+    "Answer the question using the numbered context passages. "
+    "Cite the passages you use with their numbers in plain square brackets, for example [2] or [1][3]. "
+    "Use no other citation format."
 )
 REFUSAL = " If the passages do not contain the answer, say that you cannot find it in the documents."
 
@@ -43,7 +50,7 @@ def pages_of(hit: Hit) -> str:
     return c.page_start if c.page_start == c.page_end else f"{c.page_start}-{c.page_end}"
 
 
-def build_messages(question: str, hits: list[Hit], allow_refusal: bool = False) -> list[dict]:
+def build_messages(question: str, hits: list[Hit], allow_refusal: bool = False, prompt: str = "grounded") -> list[dict]:
     blocks = []
     for i, h in enumerate(hits, 1):
         c = h.chunk
@@ -51,7 +58,7 @@ def build_messages(question: str, hits: list[Hit], allow_refusal: bool = False) 
         blocks.append(f"[{i}] ({where})\n{c.text}")
     user = "Context passages:\n\n" + "\n\n".join(blocks) + f"\n\nQuestion: {question}"
     return [
-        {"role": "system", "content": SYSTEM + (REFUSAL if allow_refusal else "")},
+        {"role": "system", "content": BARE if prompt == "bare" else SYSTEM + (REFUSAL if allow_refusal else "")},
         {"role": "user", "content": user},
     ]
 
@@ -76,9 +83,12 @@ def answer(
     k: int | None = None,
     mode: str | None = None,
     allow_refusal: bool = False,
+    prompt: str = "grounded",
+    reranker: Reranker | None = None,
 ) -> Answer:
-    hits = index.search(question, k, mode, docs)
-    text = llm.complete(build_messages(question, hits, allow_refusal))
+    k = k or settings.top_k
+    hits = retrieve(index, question, k, mode, docs, reranker)
+    text = llm.complete(build_messages(question, hits, allow_refusal, prompt)).strip()
     citations, invalid = [], []
     for n in parse_refs(text):
         if 1 <= n <= len(hits):
