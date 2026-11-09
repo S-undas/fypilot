@@ -62,6 +62,8 @@ class Settings(BaseModel):
     rrf_k: int = 60
     rerank_pool: int = 20
 
+    panel_questions_per_category: int = 3
+
     # None until tuned on a dev split
     score_threshold: float | None = None
     nli_entailment_threshold: float | None = None
