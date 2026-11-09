@@ -72,11 +72,11 @@ def anchors(req: Requirement, titles: list[str], structure: Structure, kept: lis
     return hits, subs
 
 
-def retrieve_in(index, req: Requirement, doc: str, keep: set[str], reranker, first: list[Hit]) -> list[Hit]:
+def retrieve_in(index, query: str, doc: str, keep: set[str], reranker, first: list[Hit]) -> list[Hit]:
     n = sum(1 for c in index.chunks if c.doc_id == doc)
-    hits = [h for h in index.search(req.query, n, settings.retrieval_mode, [doc]) if h.chunk.chunk_id in keep][: settings.rerank_pool]
+    hits = [h for h in index.search(query, n, settings.retrieval_mode, [doc]) if h.chunk.chunk_id in keep][: settings.rerank_pool]
     if reranker is not None:
-        hits = reranker.rerank(req.query, hits)
+        hits = reranker.rerank(query, hits)
     seen = {h.chunk.chunk_id for h in first}
     merged = (first + [h for h in hits if h.chunk.chunk_id not in seen])[: settings.top_k]
     return [replace(h, rank=i) for i, h in enumerate(merged, 1)]
@@ -87,7 +87,7 @@ def check(req: Requirement, doc: str, titles: list[str], structure: Structure, k
     if req.pdf_only:
         return {**base, "verdict": base["heading"], "evidence": [], "reason": "looked for a References or Bibliography heading in the PDF", "method": "pdf"}
     first, subs = anchors(req, titles, structure, kept)
-    hits = retrieve_in(index, req, doc, {c.chunk_id for c in kept}, reranker, first)
+    hits = retrieve_in(index, req.query, doc, {c.chunk_id for c in kept}, reranker, first)
     parsed = parse(llm.complete(build_messages(req, titles, hits, subs))) if hits else {"verdict": "missing", "evidence": [], "reason": "no passages"}
     parsed = parsed or {"verdict": "parse_error", "evidence": [], "reason": ""}
     sources = [f"{hits[n - 1].chunk.section}, p. {pages_of(hits[n - 1])}" for n in parsed["evidence"] if 1 <= n <= len(hits)]

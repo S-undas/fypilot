@@ -96,3 +96,9 @@ def targets(structure: Structure, chunks: list[Chunk], requirements) -> dict[str
                 out[r.key] = title
                 break
     return out
+
+
+def chunks_in(structure: Structure, chunks: list[Chunk], pattern: str) -> list[Chunk]:
+    """Chunks of the chapters whose title matches the pattern, in document order."""
+    nums = {n for t, n in structure.chapters.items() if re.search(pattern, t, re.I)}
+    return [c for c in chunks if structure.owner.get(c.chunk_id) in nums]
