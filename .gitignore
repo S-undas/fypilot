@@ -19,3 +19,4 @@ eval/results/*.csv
 .pytest_tmp/
 eval/results/nli*.json
 eval/results/panel_*
+eval/results/missing_*
