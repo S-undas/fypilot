@@ -19,6 +19,12 @@ BARE = (
     "Cite the passages you use with their numbers in plain square brackets, for example [2] or [1][3]. "
     "Use no other citation format."
 )
+PANEL = (
+    "Answer the question using only the numbered context passages. "
+    "Cite the passages you use with their numbers in plain square brackets, for example [2] or [1][3]. "
+    "Use no other citation format. "
+    "If the passages do not contain enough information to answer, reply with exactly NOT COVERED and nothing else."
+)
 REFUSAL = " If the passages do not contain the answer, say that you cannot find it in the documents."
 
 
@@ -58,7 +64,7 @@ def build_messages(question: str, hits: list[Hit], allow_refusal: bool = False, 
         blocks.append(f"[{i}] ({where})\n{c.text}")
     user = "Context passages:\n\n" + "\n\n".join(blocks) + f"\n\nQuestion: {question}"
     return [
-        {"role": "system", "content": BARE if prompt == "bare" else SYSTEM + (REFUSAL if allow_refusal else "")},
+        {"role": "system", "content": {"bare": BARE, "panel": PANEL}.get(prompt) or SYSTEM + (REFUSAL if allow_refusal else "")},
         {"role": "user", "content": user},
     ]
 

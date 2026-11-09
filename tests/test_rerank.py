@@ -2,7 +2,7 @@ from src.retrieval.rerank import Reranker, retrieve
 
 
 class FakeCrossEncoder:
-    def predict(self, pairs):
+    def predict(self, pairs, **kwargs):
         return [1.0 if "budget" in text else 0.0 for _, text in pairs]
 
 

@@ -22,7 +22,7 @@ class Reranker:
     def rerank(self, query: str, hits: list[Hit]) -> list[Hit]:
         if not hits:
             return []
-        scores = self.model.predict([(query, index_text(h.chunk)) for h in hits])
+        scores = self.model.predict([(query, index_text(h.chunk)) for h in hits], batch_size=8, show_progress_bar=False)
         ranked = sorted(zip(hits, scores), key=lambda p: -float(p[1]))
         return [replace(h, score=float(s), rank=i) for i, (h, s) in enumerate(ranked, 1)]
 
