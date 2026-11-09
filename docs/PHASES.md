@@ -21,7 +21,7 @@ Pipeline: documents -> ingestion -> chunks with metadata -> retrieval -> LLM ans
 | Vector store | Chroma or FAISS | FAISS (flat index), plus BM25 |
 | LLM | OpenAI API | Free-tier OpenAI-compatible APIs (see Phase 2) |
 | Parsing | PyMuPDF, python-docx | PyMuPDF for PDF, a Markdown reader for the handbook. DOCX not needed |
-| NLI | nli-deberta-v3-base | Same, planned for Phase 4 |
+| NLI | nli-deberta-v3-base | Same, used in Phase 4 |
 | UI | Streamlit | Planned for Phase 7 |
 
 Runs on CPU only. Python 3.11, virtual environment in `.venv/`.
@@ -90,16 +90,34 @@ Goal: measure plain retrieval and answering before adding abstention.
 - **Ceiling effect:** with 38 and 19 questions, a perfect score still leaves a wide margin (38 of 38 is consistent with a true rate of about 91% or higher). The set cannot separate small differences, which is why Phase 4 also uses the less cautious generator.
 - **Judge check:** the first prompt mislabeled refusals that were followed by related facts. The prompt was sharpened and a text-rule cross-check added. A person then labeled 20 answers blind (including the ones the checks had flagged). The judge agreed with the person on 19 of 20 refuse-or-answer labels (kappa 0.90) and on all 11 correctness labels. Before review it was 18 of 20 (kappa 0.80): one human label was corrected after reading the answer again, and the change is recorded in the sheet. The remaining disagreement is a judge error on a plain refusal that listed related facts. The judge's support-by-passage labels (faithfulness and citation support) were not checked by a person, so those scores are unvalidated.
 
-## Phase 4: Abstention (planned)
-- Score threshold on the dense similarity, tuned on dev.
-- NLI check (`cross-encoder/nli-deberta-v3-base`): does the retrieved evidence entail the answer? Refuse or flag if not.
-- Four-arm comparison on the test split: plain RAG, refusal instruction in the prompt, threshold, threshold plus NLI. Run on both the main model and the less cautious second model.
-- Metrics: abstention precision and recall on unanswerable questions, false-refusal rate on answerable ones, plus threshold sweep curves and error analysis.
+## Phase 4: Abstention (done)
+Goal: refuse when the documents do not support an answer, and measure whether each method helps.
 
-## Phase 5: Panel questions (planned)
-- Questions by category: motivation, novelty, methodology, evaluation, feasibility, limitations, ethics.
-- Each question is answered through the same pipeline from the student's documents, or marked NOT COVERED.
-- Evaluated on a smaller, partly manual sample.
+**Built**
+- Score threshold: refuse before answering when the best evidence score is low. Two signals were compared (dense similarity and the reranker score), and thresholds are set on dev only at two operating points (balanced, and "no-harm", which keeps about 94% of good dev answers).
+- NLI check (`cross-encoder/nli-deberta-v3-base`): each factual sentence of an answer must be entailed by the passage windows it cites. Three versions were tried and all are reported.
+- Comparison on both generators (Qwen 3.8 27B and `gpt-oss-120b`): plain, prompt refusal, score threshold, prompt refusal plus threshold, and threshold plus NLI.
+- Outputs: tables, curves (`abstention_curves.png`) and a summary produced by `python -m src.evaluation.abstention_eval`.
+
+**Results** (a plain-language walkthrough is in `PHASE4_RESULTS.md`)
+- A refusal instruction in the prompt fixed the only hallucinations on test (two, from `gpt-oss-120b`) with no loss of correct answers. Qwen already refused every unanswerable question.
+- The reranker score separates answerable from unanswerable questions far better than dense similarity (AUC 0.80 and 0.87 against 0.60 and 0.66). As a gate it costs 21% to 42% of correct answers on test, and a threshold tuned on 19 questions was unstable between dev and test.
+- The NLI check did not help: it refused most correct answers in version 1, and after fixes it still scored a quarter of correct answers as unsupported while letting a misleading answer through.
+- Setup note: model downloads and caches live inside the project folder (`.hf_cache`), not on the system drive.
+
+## Phase 5: Panel questions (done)
+Goal: likely panel questions per category, each answered from the student's documents or marked NOT COVERED.
+
+**Built**
+- Question generation per category (motivation, novelty, methodology, evaluation, feasibility, limitations, ethics): the passages most relevant to the category go to the model, which writes three short, single-topic questions specific to the project, including at least one that challenges a choice or result. Near-duplicates are dropped.
+- Answering with hybrid search, reranking and a cited answer. A dedicated prompt asks the model to reply exactly "NOT COVERED" when the passages do not answer.
+- A prep sheet per document in Markdown and CSV: a weak-spots list, then questions by category with draft answers and sources.
+- Evaluation: a baseline of fixed generic questions, an LLM judge over covered answers, and a blind human check of 36 sampled questions.
+
+**Results** (a plain-language walkthrough is in `PHASE5_RESULTS.md`)
+- Document-specific questions were marked NOT COVERED 34% of the time against 4% for generic questions, so questions built from the document expose gaps that generic ones cannot. Rates are highest for ethics and feasibility.
+- Against a person's labels, NOT COVERED precision was 75% (88% if partly covered counts as not covered) and recall 40% (35%). When the system flags a question it is usually right, but it misses many gaps, mostly "why did you choose X over Y" and "how did you validate Z" questions that it answers from related facts.
+- 30 of 36 sampled questions were rated as sensible panel questions.
 
 ## Phase 6: Gap and consistency checks (planned)
 - Missing handbook items, checked per project type (research-style reports need an experimental results chapter, development-style do not).
@@ -127,5 +145,9 @@ python -m src.qa.cli "question" --doc F25_044       # cited answer (needs API ke
 python -m src.evaluation.retrieval_eval             # compare search methods on the eval set
 python -m src.evaluation.run_baseline --name NAME --rerank   # answer and judge every question
 python -m src.evaluation.report NAME [NAME ...]     # build the results tables
+python -m src.evaluation.abstention_eval            # compare refusal methods (needs the four Phase 4 runs)
+python -m src.panel.run_panel --mode doc            # panel questions per document (use --mode generic for the baseline)
+python -m src.panel.check make                      # blind sheet for the human check
+python -m src.panel.report                          # build the Phase 5 results tables
 python -m pytest -q
 ```
