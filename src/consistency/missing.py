@@ -109,17 +109,26 @@ def doc_chunks(index, doc: str):
     return [c for c in index.chunks if c.doc_id == doc]
 
 
+def check_doc(doc: str, doc_type: str, stage: int, chunks: list, structure: Structure, index, reranker, llm, progress=None) -> list[dict]:
+    reqs = applicable(doc_type, stage)
+    rows = []
+    for n, req in enumerate(reqs, 1):
+        rows.append({"doc": doc, "type": doc_type, "variant": "intact", "target": None,
+                     **check(req, doc, list(structure.titles), structure, chunks, index, reranker, llm)})
+        if progress:
+            progress(n, len(reqs), req.name)
+    return rows
+
+
 def run_check(docs: list[str]) -> list[dict]:
     index, reranker, llm = load_context()
     rows = []
     for doc in docs:
         chunks = doc_chunks(index, doc)
-        structure = load_structure(doc, chunks)
-        for req in applicable(DOC_TYPES[doc], DOC_STAGES[doc]):
-            rec = {"doc": doc, "type": DOC_TYPES[doc], "variant": "intact", "target": None,
-                   **check(req, doc, list(structure.titles), structure, chunks, index, reranker, llm)}
-            rows.append(rec)
-            print(f"{doc} {req.key:18} heading={rec['heading']:8} llm={rec['verdict']}", flush=True)
+        got = check_doc(doc, DOC_TYPES[doc], DOC_STAGES[doc], chunks, load_structure(doc, chunks), index, reranker, llm)
+        rows += got
+        for rec in got:
+            print(f"{doc} {rec['requirement']:18} heading={rec['heading']:8} llm={rec['verdict']}", flush=True)
     return rows
 
 

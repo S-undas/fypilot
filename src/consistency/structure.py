@@ -53,10 +53,10 @@ def pdf_path(doc_id: str) -> str | None:
     return found[0] if found else None
 
 
-def load_structure(doc_id: str, chunks: list[Chunk]) -> Structure:
+def load_structure(doc_id: str, chunks: list[Chunk], path: str | None = None) -> Structure:
     import pymupdf
 
-    path = pdf_path(doc_id)
+    path = path or pdf_path(doc_id)
     sections = {c.section for c in chunks}
     titles = [t for t in FRONT if t in sections]
     chapters: dict[str, int] = {}

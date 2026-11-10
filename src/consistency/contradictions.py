@@ -149,22 +149,30 @@ def judge_pair(a: dict, b: dict, text_a: str, text_b: str, llm) -> dict:
     return out
 
 
+def contradictions_for(doc: str, doc_type: str, chunks: list, embedder, llm, progress=None) -> list[dict]:
+    text = {c.chunk_id: c.text for c in chunks}
+    facts = extract_facts(llm, chunks)
+    pairs = candidate_pairs(facts, embedder)
+    rows = []
+    for n, (i, j, sim) in enumerate(pairs, 1):
+        a, b = facts[i], facts[j]
+        res = judge_pair(a, b, text[a["chunk_id"]], text[b["chunk_id"]], llm)
+        rows.append({"doc": doc, "type": doc_type, "similarity": round(sim, 3), "a": a, "b": b, **res, "served_by": "/".join(llm.last_ref or ())})
+        if progress:
+            progress(n, len(pairs), f"{a['section']} vs {b['section']}")
+    return rows
+
+
 def run(docs: list[str], edits: dict[str, str] | None = None) -> list[dict]:
     index, _, llm = load_context()
     rows = []
     for doc in docs:
-        chunks = apply_edits(doc_chunks(index, doc), edits)
-        text = {c.chunk_id: c.text for c in chunks}
-        facts = extract_facts(llm, chunks)
-        pairs = candidate_pairs(facts, index.embedder)
-        print(f"{doc}: {len(facts)} facts, {len(pairs)} candidate pairs", flush=True)
-        for i, j, sim in pairs:
-            a, b = facts[i], facts[j]
-            res = judge_pair(a, b, text[a["chunk_id"]], text[b["chunk_id"]], llm)
-            rows.append({"doc": doc, "type": DOC_TYPES[doc], "similarity": round(sim, 3), "a": a, "b": b, **res,
-                         "served_by": "/".join(llm.last_ref or ())})
-            if res["verdict"] == "confirmed":
-                print(f"  CONFLICT {a['section']} vs {b['section']}: {res['reason']}", flush=True)
+        got = contradictions_for(doc, DOC_TYPES[doc], apply_edits(doc_chunks(index, doc), edits), index.embedder, llm)
+        rows += got
+        print(f"{doc}: {len(got)} statement pairs compared", flush=True)
+        for r in got:
+            if r["verdict"] == "confirmed":
+                print(f"  CONFLICT {r['a']['section']} vs {r['b']['section']}: {r['reason']}", flush=True)
     return rows
 
 

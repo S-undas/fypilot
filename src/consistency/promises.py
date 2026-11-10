@@ -106,18 +106,28 @@ def judge_promise(p: dict, doc: str, evidence_ids: set[str], index, reranker, ll
     return {**p, **parsed, "evidence": sources}
 
 
+def promises_for(doc: str, doc_type: str, chunks: list, structure, index, reranker, llm, edits: dict[str, str] | None = None,
+                 progress=None) -> list[dict]:
+    found = extract(llm, chunks_in(structure, apply_edits(chunks, edits), SOURCE))
+    evidence_ids = {c.chunk_id for c in chunks_in(structure, chunks, EVIDENCE)}
+    rows = []
+    for n, p in enumerate(found, 1):
+        rows.append({"doc": doc, "type": doc_type, **judge_promise(p, doc, evidence_ids, index, reranker, llm)})
+        if progress:
+            progress(n, len(found), p["promise"])
+    return rows
+
+
 def run(docs: list[str], edits: dict[str, str] | None = None) -> list[dict]:
     index, reranker, llm = load_context()
     rows = []
     for doc in docs:
         chunks = doc_chunks(index, doc)
-        structure = load_structure(doc, chunks)
-        promises = extract(llm, chunks_in(structure, apply_edits(chunks, edits), SOURCE))
-        evidence_ids = {c.chunk_id for c in chunks_in(structure, chunks, EVIDENCE)}
-        print(f"{doc}: {len(promises)} promises", flush=True)
-        for p in promises:
-            rows.append({"doc": doc, "type": DOC_TYPES[doc], **judge_promise(p, doc, evidence_ids, index, reranker, llm)})
-            print(f"  {rows[-1]['verdict']:12} {p['promise'][:90]}", flush=True)
+        got = promises_for(doc, DOC_TYPES[doc], chunks, load_structure(doc, chunks), index, reranker, llm, edits)
+        rows += got
+        print(f"{doc}: {len(got)} promises", flush=True)
+        for r in got:
+            print(f"  {r['verdict']:12} {r['promise'][:90]}", flush=True)
     return rows
 
 
