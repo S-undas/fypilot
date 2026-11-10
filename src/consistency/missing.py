@@ -7,7 +7,7 @@ import sys
 from dataclasses import replace
 
 from src.config import settings
-from src.consistency.requirements import DOC_TYPES, Requirement, applicable
+from src.consistency.requirements import DOC_STAGES, DOC_TYPES, Requirement, applicable
 from src.consistency.structure import FRONT, Structure, Variant, apply_variant, load_structure, targets
 from src.qa.answer import pages_of
 from src.retrieval.index import Hit
@@ -102,7 +102,7 @@ def load_context():
 
     index = Index.load(settings.index_dir, Embedder())
     index.search("warm up", 1)
-    return index, Reranker(), LLM(settings.llm_chain)
+    return index, Reranker(), LLM(settings.consistency_chain)
 
 
 def doc_chunks(index, doc: str):
@@ -115,7 +115,7 @@ def run_check(docs: list[str]) -> list[dict]:
     for doc in docs:
         chunks = doc_chunks(index, doc)
         structure = load_structure(doc, chunks)
-        for req in applicable(DOC_TYPES[doc]):
+        for req in applicable(DOC_TYPES[doc], DOC_STAGES[doc]):
             rec = {"doc": doc, "type": DOC_TYPES[doc], "variant": "intact", "target": None,
                    **check(req, doc, list(structure.titles), structure, chunks, index, reranker, llm)}
             rows.append(rec)
@@ -129,7 +129,7 @@ def run_perturb(docs: list[str]) -> list[dict]:
     for doc in docs:
         chunks = doc_chunks(index, doc)
         structure: Structure = load_structure(doc, chunks)
-        reqs = {r.key: r for r in applicable(DOC_TYPES[doc])}
+        reqs = {r.key: r for r in applicable(DOC_TYPES[doc], DOC_STAGES[doc])}
         for key, title in targets(structure, chunks, list(reqs.values())).items():
             for kind in ("remove", "empty"):
                 titles, kept = apply_variant(structure, chunks, Variant(kind, title))
@@ -144,7 +144,7 @@ def render_sheet(doc: str, rows: list[dict]) -> str:
     mine = [r for r in rows if r["doc"] == doc]
     gaps = [r for r in mine if r["verdict"] != "present"]
     lines = [f"# Required parts check: {doc} ({DOC_TYPES[doc]})", "", f"{len(mine)} required parts checked. {len(gaps)} are missing or partial.", ""]
-    names = {r.key: r.name for r in applicable(DOC_TYPES[doc])}
+    names = {r.key: r.name for r in applicable(DOC_TYPES[doc], DOC_STAGES[doc])}
     for r in mine:
         lines.append(f"- **{names[r['requirement']]}**: {r['verdict']}" + (f" ({r['reason']})" if r["reason"] else "")
                      + (f" Evidence: {'; '.join(r['evidence'])}" if r["evidence"] else ""))

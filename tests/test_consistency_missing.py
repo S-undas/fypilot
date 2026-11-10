@@ -1,7 +1,7 @@
 import json
 
 from src.consistency.missing import check, heading_verdict, parse, render_sheet
-from src.consistency.requirements import DOC_TYPES, REQUIREMENTS, applicable
+from src.consistency.requirements import DOC_STAGES, DOC_TYPES, REQUIREMENTS, applicable
 from src.consistency.structure import Structure, Variant, apply_variant, chapter_owners, targets
 from src.ingestion.chunks import Chunk
 
@@ -23,6 +23,12 @@ def test_requirements_depend_on_project_type():
     rd, dev = {r.key for r in applicable("rd")}, {r.key for r in applicable("dev")}
     assert {"methodology", "experiments"} <= rd and not {"methodology", "experiments"} & dev
     assert set(DOC_TYPES.values()) == {"rd", "dev"} and len({r.key for r in REQUIREMENTS}) == len(REQUIREMENTS)
+
+
+def test_stage_one_reports_do_not_need_manual_or_test_metrics():
+    first = {r.key for r in applicable("dev", 1)}
+    assert not {"user_manual", "test_cases"} & first and {"user_manual", "test_cases"} <= {r.key for r in applicable("dev", 2)}
+    assert set(DOC_STAGES) == set(DOC_TYPES) and set(DOC_STAGES.values()) <= {1, 2}
 
 
 def test_heading_rules_match_titles_not_numbers():
