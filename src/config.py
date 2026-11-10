@@ -48,9 +48,12 @@ class Settings(BaseModel):
 
     llm_chain: list[tuple[str, str]] = [("cerebras", "qwen-3.8-27b"), ("groq", "qwen/qwen3.8-27b")]
     judge_model: tuple[str, str] = ("gemini", "gemini-3.5-flash-lite")
+    consistency_chain: list[tuple[str, str]] = [
+        ("cerebras", "qwen-3.8-27b"), ("groq", "qwen/qwen3.8-27b"), ("gemini", "gemini-3.5-flash-lite")]
     llm_temperature: float = 0.0
     llm_max_retries: int = 5
     llm_cooldown_s: float = 60.0
+    llm_chain_rounds: int = 3
     llm_out_tokens_estimate: int = 800
 
     chunk_max_chars: int = 1500

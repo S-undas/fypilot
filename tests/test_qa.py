@@ -70,6 +70,47 @@ def test_falls_back_then_skips_cooled_down_provider(monkeypatch):
     assert primary.calls == 2
 
 
+def test_whole_chain_is_retried_after_a_cooldown(monkeypatch):
+    monkeypatch.setattr(cfg.settings, "llm_max_retries", 1)
+    monkeypatch.setattr(cfg.settings, "llm_cooldown_s", 0.0)
+    primary = FakeClient([HttpError(429), "second round"])
+    llm = LLM(ONE, {"gemini": primary})
+    assert llm.complete(MSGS) == "second round" and primary.calls == 2
+    monkeypatch.setattr(cfg.settings, "llm_chain_rounds", 2)
+    always = FakeClient([HttpError(429), HttpError(429)])
+    with pytest.raises(RuntimeError, match="All providers failed"):
+        LLM(ONE, {"gemini": always}).complete([{"role": "user", "content": "other"}])
+
+
+def test_payment_required_everywhere_fails_without_waiting(monkeypatch):
+    monkeypatch.setattr(cfg.settings, "llm_cooldown_s", 1000.0)
+    only = FakeClient([HttpError(402)])
+    with pytest.raises(RuntimeError, match="All providers failed"):
+        LLM(ONE, {"gemini": only}).complete(MSGS)
+    assert only.calls == 1
+
+
+def test_timeouts_count_as_retryable():
+    from src.qa.llm import retryable
+
+    class APIConnectionError(Exception):
+        pass
+
+    class APITimeoutError(APIConnectionError):
+        pass
+
+    assert retryable(APITimeoutError()) and retryable(APIConnectionError()) and not retryable(ValueError())
+
+
+def test_payment_required_falls_back_without_retrying(monkeypatch):
+    monkeypatch.setattr(cfg.settings, "llm_max_retries", 3)
+    primary = FakeClient([HttpError(402)])
+    backup = FakeClient(["from backup", "again"])
+    llm = LLM(TWO, {"gemini": primary, "groq": backup})
+    assert llm.complete(MSGS) == "from backup" and primary.calls == 1
+    assert llm.complete([{"role": "user", "content": "second"}]) == "again" and primary.calls == 1
+
+
 def test_cached_answer_from_any_chain_member_is_reused():
     backup = FakeClient(["cached by backup"])
     LLM([("groq", "m2")], {"groq": backup}).complete(MSGS)

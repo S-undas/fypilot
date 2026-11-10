@@ -8,10 +8,16 @@ from collections import deque
 from src.config import LIMITS, PROVIDERS, settings
 
 RETRY_STATUS = {429, 500, 502, 503, 504}
+UNAVAILABLE_STATUS = {402}
+
+
+def unavailable(exc: Exception) -> bool:
+    return getattr(exc, "status_code", None) in UNAVAILABLE_STATUS
 
 
 def retryable(exc: Exception) -> bool:
-    return getattr(exc, "status_code", None) in RETRY_STATUS or type(exc).__name__ == "APIConnectionError"
+    names = {c.__name__ for c in type(exc).__mro__}
+    return getattr(exc, "status_code", None) in RETRY_STATUS or "APIConnectionError" in names
 
 
 class Pacer:
@@ -79,7 +85,7 @@ class LLM:
                 self.calls += 1
                 return resp.choices[0].message.content or ""
             except Exception as exc:
-                if not retryable(exc) or attempt == settings.llm_max_retries - 1:
+                if unavailable(exc) or not retryable(exc) or attempt == settings.llm_max_retries - 1:
                     raise
                 time.sleep(min(2**attempt, 60))
         raise RuntimeError("unreachable")
@@ -91,21 +97,27 @@ class LLM:
             if path.exists():
                 self.last_ref = ref
                 return json.loads(path.read_text(encoding="utf-8"))["text"]
-        now = time.monotonic()
-        order = [r for r in self.chain if self.cooldown.get(r[0], 0) <= now] or list(self.chain)
         last_exc: Exception | None = None
-        for ref in order:
-            try:
-                text = self.call(ref, messages, temperature, max_tokens)
-            except Exception as exc:
-                if not retryable(exc):
-                    raise
-                self.cooldown[ref[0]] = time.monotonic() + settings.llm_cooldown_s
-                last_exc = exc
-                continue
-            path = self.cache_path(ref, messages, temperature)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps({"text": text}), encoding="utf-8")
-            self.last_ref = ref
-            return text
+        for round_ in range(settings.llm_chain_rounds):
+            now = time.monotonic()
+            order = [r for r in self.chain if self.cooldown.get(r[0], 0) <= now] or list(self.chain)
+            waitable = False
+            for ref in order:
+                try:
+                    text = self.call(ref, messages, temperature, max_tokens)
+                except Exception as exc:
+                    if not (retryable(exc) or unavailable(exc)):
+                        raise
+                    waitable = waitable or not unavailable(exc)
+                    self.cooldown[ref[0]] = time.monotonic() + (3600.0 if unavailable(exc) else settings.llm_cooldown_s)
+                    last_exc = exc
+                    continue
+                path = self.cache_path(ref, messages, temperature)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(json.dumps({"text": text}), encoding="utf-8")
+                self.last_ref = ref
+                return text
+            if not waitable or round_ == settings.llm_chain_rounds - 1:
+                break
+            time.sleep(settings.llm_cooldown_s)
         raise RuntimeError(f"All providers failed: {last_exc}")
