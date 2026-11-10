@@ -102,3 +102,10 @@ def chunks_in(structure: Structure, chunks: list[Chunk], pattern: str) -> list[C
     """Chunks of the chapters whose title matches the pattern, in document order."""
     nums = {n for t, n in structure.chapters.items() if re.search(pattern, t, re.I)}
     return [c for c in chunks if structure.owner.get(c.chunk_id) in nums]
+
+
+def apply_edits(chunks: list[Chunk], edits: dict[str, str] | None) -> list[Chunk]:
+    """Copies of the chunks with replaced text, for planted-mistake tests. The index itself is never changed."""
+    if not edits:
+        return chunks
+    return [c.model_copy(update={"text": edits[c.chunk_id]}) if c.chunk_id in edits else c for c in chunks]

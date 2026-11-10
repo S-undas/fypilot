@@ -29,7 +29,7 @@ class ScriptedLLM:
     def __init__(self, replies):
         self.replies = list(replies)
 
-    def complete(self, messages):
+    def complete(self, messages, max_tokens=None):
         return self.replies.pop(0)
 
 

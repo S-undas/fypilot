@@ -9,7 +9,7 @@ from collections import Counter
 from src.config import settings
 from src.consistency.missing import doc_chunks, load_context, retrieve_in
 from src.consistency.requirements import DOC_TYPES
-from src.consistency.structure import chunks_in, load_structure
+from src.consistency.structure import apply_edits, chunks_in, load_structure
 from src.panel.generate import similar
 from src.qa.answer import pages_of
 from src.retrieval.index import Hit
@@ -92,7 +92,7 @@ def parse_verdict(text: str) -> dict | None:
 def extract(llm, chunks) -> list[dict]:
     found: list[dict] = []
     for c in chunks:
-        for p in parse_promises(llm.complete(extract_messages(c.section, c.text)), c.text):
+        for p in parse_promises(llm.complete(extract_messages(c.section, c.text), max_tokens=600), c.text):
             if not any(similar(p["promise"], f["promise"]) for f in found):
                 found.append({**p, "section": c.section, "page": c.page_start or ""})
     return found
@@ -100,19 +100,19 @@ def extract(llm, chunks) -> list[dict]:
 
 def judge_promise(p: dict, doc: str, evidence_ids: set[str], index, reranker, llm) -> dict:
     hits = retrieve_in(index, p["promise"], doc, evidence_ids, reranker, [])
-    parsed = parse_verdict(llm.complete(judge_messages(p["promise"], p["section"], hits))) if hits else None
+    parsed = parse_verdict(llm.complete(judge_messages(p["promise"], p["section"], hits), max_tokens=200)) if hits else None
     parsed = parsed or {"verdict": "parse_error", "evidence": [], "reason": ""}
     sources = [f"{hits[n - 1].chunk.section}, p. {pages_of(hits[n - 1])}" for n in parsed["evidence"] if 1 <= n <= len(hits)]
     return {**p, **parsed, "evidence": sources}
 
 
-def run(docs: list[str]) -> list[dict]:
+def run(docs: list[str], edits: dict[str, str] | None = None) -> list[dict]:
     index, reranker, llm = load_context()
     rows = []
     for doc in docs:
         chunks = doc_chunks(index, doc)
         structure = load_structure(doc, chunks)
-        promises = extract(llm, chunks_in(structure, chunks, SOURCE))
+        promises = extract(llm, chunks_in(structure, apply_edits(chunks, edits), SOURCE))
         evidence_ids = {c.chunk_id for c in chunks_in(structure, chunks, EVIDENCE)}
         print(f"{doc}: {len(promises)} promises", flush=True)
         for p in promises:
