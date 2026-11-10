@@ -2,7 +2,7 @@
 
 What was built in each phase, with the key decisions and numbers. `PROJECT_SPEC.md` describes what the system should do. This file records what was actually done.
 
-Pipeline: documents -> ingestion -> chunks with metadata -> retrieval -> LLM answer with citations -> abstention gate, panel questions, gap and consistency checks -> evaluation -> (planned) UI.
+Pipeline: documents -> ingestion -> chunks with metadata -> retrieval -> LLM answer with citations -> abstention gate, panel questions, gap and consistency checks -> evaluation -> UI.
 
 ## Dataset
 - 4 FYP final reports: 2 research-style (with an experimental results chapter) and 2 development-style.
@@ -22,7 +22,7 @@ Pipeline: documents -> ingestion -> chunks with metadata -> retrieval -> LLM ans
 | LLM | OpenAI API | Free-tier OpenAI-compatible APIs (see Phase 2) |
 | Parsing | PyMuPDF, python-docx | PyMuPDF for PDF, a Markdown reader for the handbook. DOCX not needed |
 | NLI | nli-deberta-v3-base | Same, used in Phase 4 |
-| UI | Streamlit | Planned for Phase 7 |
+| UI | Streamlit | Used in Phase 7 |
 
 Runs on CPU only. Python 3.11, virtual environment in `.venv/`.
 
@@ -136,10 +136,23 @@ Goal: find what a panel would catch in a report: missing required parts, promise
 - Contradictions: 1,661 pairs compared, 29 confirmed. A person judged 7 of 12 confirmed pairs real.
 - Planted mistakes: 13 of 14 invented promises and 7 of 12 changed numbers were found. Most contradiction misses happen before the judge, when facts are picked out.
 
-## Phase 7: Interface and final write-up (planned)
-- Streamlit app: upload documents, ask questions, view panel questions and the gap report.
-- Final evaluation runs, results tables, error analysis and limitations.
-- README and presentation.
+## Phase 7: Interface and final write-up (done)
+Goal: a simple interface over the pipeline, and the final results with an error analysis. A README and slides were left out of scope.
+
+**Built**
+- Final results: one report that puts plain RAG against RAG with abstention in a single table, and an error analysis of the question answering and the panel questions, produced by `python -m src.evaluation.final` from saved runs. A plain-language version is in `FINAL_RESULTS.md`.
+- Streamlit app (`app/main.py`, logic in `app/service.py`) with three views over one chosen document:
+  - Ask: a cited answer, or a clear "not answered in the document" when the evidence is missing. It uses hybrid search, the reranker and the refusal instruction, the best combination from Phase 4.
+  - Panel prep: questions by category with draft answers or NOT COVERED, a weak-spots list and a downloadable prep sheet.
+  - Gap report: required parts, promises and contradictions. Saved results load instantly for the four demo reports. The checks can also be run on any PDF, with a progress bar.
+- A report can be added as PDF or Markdown. It is read, split and indexed on the CPU with no model calls. The gap checks need the chapter structure of a PDF, so they are not offered for Markdown.
+- The three Phase 6 checkers now run on a single document with an optional progress callback, so the app and the command line share the same code.
+
+**Notes**
+- The app sets the Hugging Face offline switch when the models are already cached, because a blocked connection to the hub otherwise adds minutes of retries to the first question.
+- In the app the model chain fails fast with a plain message instead of waiting out the daily-limit cooldowns used in batch runs.
+- Timing on this machine: once the models are loaded a question took about 2.5 seconds. The first question after the app starts is slower while the models load, and adding a report took about 40 seconds (35 of them indexing). A panel prep sheet and the gap checks make many model calls, so their time depends on the free-tier limits of the day.
+- Run it with `streamlit run app/main.py`.
 
 ## Limitations to state
 - Small corpus, and all reports follow one university template, so heading detection and tuned thresholds may not transfer to very different documents.
@@ -167,5 +180,7 @@ python -m src.consistency.contradictions            # statement pairs that confl
 python -m src.consistency.plant make                # planted mistakes to approve, then: plant evaluate
 python -m src.consistency.review make               # blind sheet for the human check, then: review score
 python -m src.consistency.report                    # build the Phase 6 results tables
+python -m src.evaluation.final                      # build the final comparison and error analysis
+streamlit run app/main.py                           # the app
 python -m pytest -q
 ```
