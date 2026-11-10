@@ -20,6 +20,25 @@ def retryable(exc: Exception) -> bool:
     return getattr(exc, "status_code", None) in RETRY_STATUS or "APIConnectionError" in names
 
 
+def describe(exc: Exception) -> str:
+    status = getattr(exc, "status_code", None)
+    if status == 402:
+        return "payment required, the free credit is used up"
+    if status == 429:
+        return "rate limit or daily limit reached"
+    if status in RETRY_STATUS:
+        return f"the service had an error ({status})"
+    if "APIConnectionError" in {c.__name__ for c in type(exc).__mro__}:
+        return "could not connect, offline or blocked by the network"
+    return type(exc).__name__
+
+
+class ProvidersUnavailable(RuntimeError):
+    def __init__(self, message: str, reasons: dict[str, str]):
+        super().__init__(message)
+        self.reasons = reasons
+
+
 class Pacer:
     def __init__(self, rpm: int | None, tpm: int | None):
         self.interval = 60 / rpm if rpm else 0.0
@@ -98,6 +117,7 @@ class LLM:
                 self.last_ref = ref
                 return json.loads(path.read_text(encoding="utf-8"))["text"]
         last_exc: Exception | None = None
+        reasons: dict[str, str] = {}
         for round_ in range(settings.llm_chain_rounds):
             now = time.monotonic()
             order = [r for r in self.chain if self.cooldown.get(r[0], 0) <= now] or list(self.chain)
@@ -111,6 +131,7 @@ class LLM:
                     waitable = waitable or not unavailable(exc)
                     self.cooldown[ref[0]] = time.monotonic() + (3600.0 if unavailable(exc) else settings.llm_cooldown_s)
                     last_exc = exc
+                    reasons[ref[0]] = describe(exc)
                     continue
                 path = self.cache_path(ref, messages, temperature)
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -120,4 +141,4 @@ class LLM:
             if not waitable or round_ == settings.llm_chain_rounds - 1:
                 break
             time.sleep(settings.llm_cooldown_s)
-        raise RuntimeError(f"All providers failed: {last_exc}")
+        raise ProvidersUnavailable(f"All providers failed: {last_exc}", reasons)

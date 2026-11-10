@@ -90,6 +90,17 @@ def test_payment_required_everywhere_fails_without_waiting(monkeypatch):
     assert only.calls == 1
 
 
+def test_failure_lists_why_each_provider_failed(monkeypatch):
+    monkeypatch.setattr(cfg.settings, "llm_max_retries", 1)
+    monkeypatch.setattr(cfg.settings, "llm_chain_rounds", 1)
+    from src.qa.llm import ProvidersUnavailable
+
+    llm = LLM(TWO, {"gemini": FakeClient([HttpError(402)]), "groq": FakeClient([HttpError(429)])})
+    with pytest.raises(ProvidersUnavailable) as info:
+        llm.complete(MSGS)
+    assert info.value.reasons == {"gemini": "payment required, the free credit is used up", "groq": "rate limit or daily limit reached"}
+
+
 def test_timeouts_count_as_retryable():
     from src.qa.llm import retryable
 
