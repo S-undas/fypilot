@@ -12,3 +12,4 @@ openai
 rank-bm25
 pytest>=9.0
 matplotlib
+streamlit>=1.40
