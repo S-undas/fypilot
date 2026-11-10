@@ -2,7 +2,7 @@
 
 What was built in each phase, with the key decisions and numbers. `PROJECT_SPEC.md` describes what the system should do. This file records what was actually done.
 
-Pipeline: documents -> ingestion -> chunks with metadata -> retrieval -> LLM answer with citations -> (planned) abstention gate, panel questions, gap checks -> evaluation -> UI.
+Pipeline: documents -> ingestion -> chunks with metadata -> retrieval -> LLM answer with citations -> abstention gate, panel questions, gap and consistency checks -> evaluation -> (planned) UI.
 
 ## Dataset
 - 4 FYP final reports: 2 research-style (with an experimental results chapter) and 2 development-style.
@@ -119,11 +119,22 @@ Goal: likely panel questions per category, each answered from the student's docu
 - Against a person's labels, NOT COVERED precision was 75% (88% if partly covered counts as not covered) and recall 40% (35%). When the system flags a question it is usually right, but it misses many gaps, mostly "why did you choose X over Y" and "how did you validate Z" questions that it answers from related facts.
 - 30 of 36 sampled questions were rated as sensible panel questions.
 
-## Phase 6: Gap and consistency checks (planned)
-- Missing handbook items, checked per project type (research-style reports need an experimental results chapter, development-style do not).
-- Promised but unevidenced claims, found by retrieving evidence for stated objectives and verifying it with NLI.
-- Contradictions within a document, from claims with numbers or named entities, compared across sections with NLI.
-- Scored against issues deliberately planted in copies of the reports, with a change log. Real issues found in the untouched reports are reviewed by hand and counted separately.
+## Phase 6: Gap and consistency checks (done)
+Goal: find what a panel would catch in a report: missing required parts, promises with no evidence, and statements that contradict each other.
+
+**Built**
+- Required parts: the handbook's report requirements as a list by chapter name, split by project type and by stage. Each part is checked by retrieving the matching chapter and asking the model for present, partial or missing with citations. References is checked directly in the PDF. A plain heading rule is the baseline.
+- Promises: promises and claims are extracted from the introduction, vision and methodology chapters (each must quote the report word for word), then looked up in the implementation, test, results and conclusion chapters and judged shown, not shown or contradicted.
+- Contradictions: specific facts are extracted from every passage, paired when they carry different numbers or names, judged by a first check, and confirmed by a second check that reads both full passages.
+- Evaluation: a removal test (delete or empty each required chapter), planted mistakes (changed numbers and invented promises, approved by a person), and a blind human check of 34 flags.
+- Model chain: payment errors fall through to the next provider, timeouts are retried, and the whole chain is retried after a cooldown. Gemini is a last fallback for these checks only.
+- The model judges these checks, not NLI, because NLI did not help in Phase 4.
+
+**Results** (a plain-language walkthrough is in `PHASE6_RESULTS.md`)
+- Required parts: 45 present, 3 partial, 2 missing across the four reports. Both "missing" flags were confirmed by a person. Deleted chapters were flagged 44 of 44 times, emptied chapters 44 of 44, against 0 of 44 for the heading rule.
+- Promises: 225 found, 63% shown. A person judged 5 of 10 flags right and 0 of 5 "shown" promises unsupported.
+- Contradictions: 1,661 pairs compared, 29 confirmed. A person judged 7 of 12 confirmed pairs real.
+- Planted mistakes: 13 of 14 invented promises and 7 of 12 changed numbers were found. Most contradiction misses happen before the judge, when facts are picked out.
 
 ## Phase 7: Interface and final write-up (planned)
 - Streamlit app: upload documents, ask questions, view panel questions and the gap report.
@@ -133,7 +144,8 @@ Goal: likely panel questions per category, each answered from the student's docu
 ## Limitations to state
 - Small corpus, and all reports follow one university template, so heading detection and tuned thresholds may not transfer to very different documents.
 - The judge is an LLM, so its grading has some bias. A hand-labeled sample measures it.
-- Free-tier models and rate limits, CPU only.
+- Free-tier models and rate limits, CPU only. Daily caps changed which model answered part of the Phase 6 runs.
+- Phase 6 settings were adjusted on the same four reports they are scored on, and the human samples are small.
 - Evaluation questions were drafted with an LLM and verified by a person.
 
 ## Running it
@@ -149,5 +161,11 @@ python -m src.evaluation.abstention_eval            # compare refusal methods (n
 python -m src.panel.run_panel --mode doc            # panel questions per document (use --mode generic for the baseline)
 python -m src.panel.check make                      # blind sheet for the human check
 python -m src.panel.report                          # build the Phase 5 results tables
+python -m src.consistency.missing --mode check      # required parts per report (--mode perturb for the removal test)
+python -m src.consistency.promises                  # promises and their evidence
+python -m src.consistency.contradictions            # statement pairs that conflict
+python -m src.consistency.plant make                # planted mistakes to approve, then: plant evaluate
+python -m src.consistency.review make               # blind sheet for the human check, then: review score
+python -m src.consistency.report                    # build the Phase 6 results tables
 python -m pytest -q
 ```
