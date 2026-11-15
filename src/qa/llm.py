@@ -81,6 +81,15 @@ class LLM:
             )
         return self.clients[provider]
 
+    def has_key(self, provider: str) -> bool:
+        if provider in self.clients:
+            return True
+        try:
+            settings.api_key(provider)
+            return True
+        except RuntimeError:
+            return False
+
     def pacer(self, ref: tuple[str, str]) -> Pacer:
         if ref not in self.pacers:
             rpm, tpm = LIMITS.get(ref, (None, None))
@@ -121,6 +130,9 @@ class LLM:
         for round_ in range(settings.llm_chain_rounds):
             now = time.monotonic()
             order = [r for r in self.chain if self.cooldown.get(r[0], 0) <= now] or list(self.chain)
+            for ref in [r for r in order if not self.has_key(r[0])]:
+                reasons[ref[0]] = "no API key set in .env"
+            order = [r for r in order if self.has_key(r[0])]
             waitable = False
             for ref in order:
                 try:

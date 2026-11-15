@@ -183,3 +183,20 @@ def test_bare_prompt_has_no_grounding_or_refusal_instruction(index):
     bare = build_messages("q", hits, prompt="bare")[0]["content"]
     assert "outside knowledge" not in bare and "cannot find" not in bare and "[2]" in bare
     assert "outside knowledge" in build_messages("q", hits)[0]["content"]
+
+
+def test_provider_without_a_key_is_skipped(monkeypatch):
+    from src.qa.llm import ProvidersUnavailable
+
+    def api_key(self, name):
+        if name == "gemini":
+            raise RuntimeError("GEMINI_API_KEY is not set")
+        return "key"
+
+    monkeypatch.setattr(type(cfg.settings), "api_key", api_key)
+    monkeypatch.setattr(cfg.settings, "llm_chain_rounds", 1)
+    llm = LLM(TWO, {"groq": FakeClient(["from groq"])})
+    assert llm.complete(MSGS) == "from groq" and llm.last_ref == ("groq", "m2")
+    with pytest.raises(ProvidersUnavailable) as info:
+        LLM([("gemini", "m1")]).complete([{"role": "user", "content": "no keys at all"}])
+    assert info.value.reasons == {"gemini": "no API key set in .env"}
